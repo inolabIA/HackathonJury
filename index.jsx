@@ -1,0 +1,606 @@
+import { useState, useEffect, useCallback } from "react";
+
+const CRITERIA = [
+  { key: "innovation", label: "Innovation", desc: "L'approche est-elle originale ? Utilisation créative de l'IA ?", icon: "◈" },
+  { key: "pertinence", label: "Pertinence", desc: "Répond-elle au défi client ? Comprennent-ils les enjeux métier ?", icon: "◎" },
+  { key: "faisabilite", label: "Faisabilité Technique", desc: "L'architecture est-elle solide ? Choix techniques réalistes ?", icon: "◉" },
+  { key: "impact", label: "Impact Potentiel", desc: "Valeur ajoutée mesurable ? Solution scalable et déployable ?", icon: "◆" },
+  { key: "presentation", label: "Qualité Présentation", desc: "Message clair ? Support visuel de qualité ? Convaincant ?", icon: "◇" },
+];
+
+const TEAMS = ["Équipe 1", "Équipe 2", "Équipe 3", "Équipe 4", "Équipe 5", "Équipe 6"];
+
+const EMPTY_SCORES = Object.fromEntries(CRITERIA.map(c => [c.key, 0]));
+const EMPTY_COMMENTS = Object.fromEntries(CRITERIA.map(c => [c.key, ""]));
+
+function ScoreSlider({ value, onChange, max = 20 }) {
+  const pct = (value / max) * 100;
+  const color = value >= 16 ? "#38B000" : value >= 12 ? "#E31837" : value >= 8 ? "#C4122E" : value > 0 ? "#666666" : "#CCCCCC";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ position: "relative", flex: 1, height: 6, borderRadius: 3, background: "#F5F5F5" }}>
+        <div style={{
+          position: "absolute", left: 0, top: 0, height: "100%",
+          width: `${pct}%`, borderRadius: 3,
+          background: `linear-gradient(90deg, ${color}88, ${color})`,
+          transition: "width 0.2s, background 0.3s",
+        }} />
+        <input
+          type="range" min={0} max={max} value={value}
+          onChange={e => onChange(Number(e.target.value))}
+          style={{
+            position: "absolute", top: -7, left: 0, width: "100%", height: 20,
+            opacity: 0, cursor: "pointer", margin: 0,
+          }}
+        />
+      </div>
+      <div style={{
+        minWidth: 42, textAlign: "center",
+        fontFamily: "'Courier New', monospace", fontWeight: 700,
+        fontSize: 20, color,
+        transition: "color 0.3s",
+      }}>
+        {value}<span style={{ fontSize: 13, color: "#666666", fontWeight: 400 }}>/{max}</span>
+      </div>
+    </div>
+  );
+}
+
+function ScoreForm({ onSubmit }) {
+  const [juryName, setJuryName] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [customTeam, setCustomTeam] = useState("");
+  const [scores, setScores] = useState({ ...EMPTY_SCORES });
+  const [comments, setComments] = useState({ ...EMPTY_COMMENTS });
+  const [globalComment, setGlobalComment] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+
+  const total = Object.values(scores).reduce((a, b) => a + b, 0);
+  const finalTeam = teamName === "__custom__" ? customTeam : teamName;
+  const canSubmit = juryName.trim() && finalTeam.trim() && total > 0;
+
+  function handleSubmit() {
+    if (!canSubmit) return;
+    onSubmit({ juryName: juryName.trim(), teamName: finalTeam.trim(), scores, comments, globalComment, total, timestamp: Date.now() });
+    setSubmitted(true);
+  }
+
+  function reset() {
+    setJuryName(""); setTeamName(""); setCustomTeam("");
+    setScores({ ...EMPTY_SCORES }); setComments({ ...EMPTY_COMMENTS });
+    setGlobalComment(""); setSubmitted(false); setActiveTab(0);
+  }
+
+  if (submitted) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 24px" }}>
+        <div style={{ fontSize: 58, marginBottom: 20, color: "#E31837" }}>✦</div>
+        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, color: "#333333", marginBottom: 8 }}>
+          Notation Enregistrée
+        </h2>
+        <p style={{ color: "#666666", marginBottom: 8 }}>
+          {juryName} — {finalTeam}
+        </p>
+        <div style={{
+          display: "inline-block",
+          fontFamily: "'Courier New', monospace", fontSize: 38, fontWeight: 700,
+          color: "#E31837", marginBottom: 32,
+        }}>
+          {total}<span style={{ fontSize: 18, color: "#666666" }}>/100</span>
+        </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <button onClick={reset} style={btnStyle("#E31837")}>Noter une autre équipe</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <style>{`
+        textarea:focus, input:focus, select:focus { outline: none; border-color: #E31837 !important; }
+        .crit-tab { transition: all 0.15s; border: 1px solid transparent; cursor: pointer; }
+        .crit-tab:hover { border-color: rgba(227,24,55,0.3); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .crit-tab.active-tab { border-color: #E31837 !important; background: rgba(227,24,55,0.08) !important; }
+        input[type=range] { -webkit-appearance: none; }
+        ::placeholder { color: #999999 !important; }
+      `}</style>
+
+      {/* Identity */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 28 }}>
+        <div>
+          <label style={labelStyle}>Membre du jury</label>
+          <input
+            value={juryName} onChange={e => setJuryName(e.target.value)}
+            placeholder="Votre nom complet"
+            style={inputStyle}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>Équipe évaluée</label>
+          <select value={teamName} onChange={e => setTeamName(e.target.value)} style={inputStyle}>
+            <option value="">Sélectionner…</option>
+            {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="__custom__">Autre…</option>
+          </select>
+          {teamName === "__custom__" && (
+            <input
+              value={customTeam} onChange={e => setCustomTeam(e.target.value)}
+              placeholder="Nom de l'équipe"
+              style={{ ...inputStyle, marginTop: 8 }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Criteria tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+        {CRITERIA.map((c, i) => (
+          <button
+            key={c.key}
+            className={`crit-tab${activeTab === i ? " active-tab" : ""}`}
+            onClick={() => setActiveTab(i)}
+            style={{
+              padding: "6px 12px", borderRadius: 8, fontSize: 11,
+              background: "#FFFFFF",
+              color: scores[c.key] > 0 ? "#E31837" : "#666666",
+              fontFamily: "'Courier New', monospace",
+              letterSpacing: "0.05em",
+              display: "flex", alignItems: "center", gap: 6,
+              border: "1px solid #CCCCCC",
+            }}
+          >
+            <span>{c.icon}</span>
+            <span>{c.label}</span>
+            {scores[c.key] > 0 && (
+              <span style={{ color: "#E31837", fontWeight: 700 }}>{scores[c.key]}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Active criterion */}
+      {CRITERIA.map((c, i) => i === activeTab && (
+        <div key={c.key} style={{
+          background: "#FFFFFF", border: "1px solid #CCCCCC",
+          borderRadius: 8, padding: 24, marginBottom: 20,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+            <div>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: "#333333", marginBottom: 4 }}>
+                {c.icon} {c.label}
+              </div>
+              <div style={{ fontSize: 14, color: "#666666" }}>{c.desc}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: "'Courier New', monospace", fontSize: 13, color: "#666666", marginBottom: 4 }}>
+                TOTAL PARTIEL
+              </div>
+              <div style={{ fontFamily: "'Courier New', monospace", fontSize: 24, color: "#E31837" }}>
+                {total}<span style={{ fontSize: 14, color: "#666666" }}>/100</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: "#666666", letterSpacing: "0.1em" }}>NOTE</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[5, 10, 15, 20].map(v => (
+                  <button key={v} onClick={() => setScores(s => ({ ...s, [c.key]: v }))}
+                    style={{
+                      padding: "2px 8px", borderRadius: 4, fontSize: 12, cursor: "pointer",
+                      background: scores[c.key] === v ? "#E31837" : "#FFFFFF",
+                      color: scores[c.key] === v ? "#FFFFFF" : "#E31837",
+                      border: "1px solid #E31837",
+                    }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <ScoreSlider value={scores[c.key]} onChange={v => setScores(s => ({ ...s, [c.key]: v }))} />
+          </div>
+
+          <div>
+            <label style={{ ...labelStyle, marginBottom: 6 }}>Commentaire (optionnel)</label>
+            <textarea
+              value={comments[c.key]}
+              onChange={e => setComments(cm => ({ ...cm, [c.key]: e.target.value }))}
+              placeholder="Points forts, points à améliorer…"
+              rows={3}
+              style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16, gap: 8 }}>
+            {i > 0 && (
+              <button onClick={() => setActiveTab(i - 1)} style={btnStyle("#E31837", true)}>← Précédent</button>
+            )}
+            {i < CRITERIA.length - 1 ? (
+              <button onClick={() => setActiveTab(i + 1)} style={btnStyle("#E31837")}>Suivant →</button>
+            ) : null}
+          </div>
+        </div>
+      ))}
+
+      {/* Score summary bar */}
+      <div style={{
+        background: "#F5F5F5", border: "1px solid #CCCCCC",
+        borderRadius: 8, padding: "14px 18px", marginBottom: 20,
+        display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center",
+      }}>
+        {CRITERIA.map(c => (
+          <div key={c.key} style={{ flex: 1, minWidth: 80, textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: "#666666", letterSpacing: "0.08em", marginBottom: 3 }}>
+              {c.label.split(" ")[0].toUpperCase()}
+            </div>
+            <div style={{
+              fontFamily: "'Courier New', monospace", fontSize: 17, fontWeight: 700,
+              color: scores[c.key] >= 16 ? "#38B000" : scores[c.key] >= 12 ? "#E31837" : scores[c.key] > 0 ? "#C4122E" : "#CCCCCC",
+            }}>
+              {scores[c.key]}
+            </div>
+          </div>
+        ))}
+        <div style={{ width: 1, background: "#CCCCCC", alignSelf: "stretch" }} />
+        <div style={{ minWidth: 70, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "#666666", letterSpacing: "0.08em", marginBottom: 3 }}>TOTAL</div>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 20, fontWeight: 700, color: "#E31837" }}>{total}</div>
+        </div>
+      </div>
+
+      {/* Global comment */}
+      <div style={{ marginBottom: 24 }}>
+        <label style={labelStyle}>Commentaire global (optionnel)</label>
+        <textarea
+          value={globalComment} onChange={e => setGlobalComment(e.target.value)}
+          placeholder="Impression générale, feedback pour l'équipe…"
+          rows={3}
+          style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+        />
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={!canSubmit}
+        style={{
+          ...btnStyle("#E31837"),
+          width: "100%", fontSize: 14, padding: "14px",
+          opacity: canSubmit ? 1 : 0.4, cursor: canSubmit ? "pointer" : "not-allowed",
+        }}
+      >
+        ✦ Valider la notation
+      </button>
+    </div>
+  );
+}
+
+function ConsolidatedView({ scores, onBack }) {
+  const [selected, setSelected] = useState("all");
+
+  const teams = [...new Set(scores.map(s => s.teamName))].sort();
+  const jurors = [...new Set(scores.map(s => s.juryName))].sort();
+
+  function teamStats(team) {
+    const entries = scores.filter(s => s.teamName === team);
+    if (!entries.length) return null;
+    const avg = (key) => (entries.reduce((a, s) => a + s.scores[key], 0) / entries.length).toFixed(1);
+    const totalAvg = (entries.reduce((a, s) => a + s.total, 0) / entries.length).toFixed(1);
+    return { entries, avg, totalAvg: parseFloat(totalAvg) };
+  }
+
+  const teamRankings = teams.map(t => ({ team: t, ...teamStats(t) })).sort((a, b) => b.totalAvg - a.totalAvg);
+
+  const medals = ["🥇", "🥈", "🥉"];
+
+  return (
+    <div>
+      <style>{`
+        .team-row { transition: all 0.15s; cursor: pointer; }
+        .team-row:hover { background: rgba(227,24,55,0.05) !important; }
+        .team-row.sel { background: rgba(227,24,55,0.08) !important; border-color: rgba(227,24,55,0.4) !important; }
+      `}</style>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, color: "#333333", margin: "0 0 4px" }}>
+            Résultats Consolidés
+          </h2>
+          <p style={{ color: "#666666", fontSize: 14, margin: 0 }}>
+            {scores.length} notation{scores.length > 1 ? "s" : ""} · {jurors.length} jury · {teams.length} équipe{teams.length > 1 ? "s" : ""}
+          </p>
+        </div>
+        <button onClick={onBack} style={btnStyle("#E31837", true)}>← Nouvelle notation</button>
+      </div>
+
+      {/* Podium */}
+      {teamRankings.length >= 1 && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(227,24,55,0.05), rgba(0,61,122,0.05))",
+          border: "1px solid #E31837", borderRadius: 8,
+          padding: "20px 24px", marginBottom: 24,
+        }}>
+          <div style={{ fontSize: 12, color: "#E31837", letterSpacing: "0.15em", marginBottom: 16, fontWeight: 600 }}>CLASSEMENT</div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {teamRankings.slice(0, 3).map((t, i) => (
+              <div key={t.team} style={{
+                flex: 1, minWidth: 120, textAlign: "center", padding: "16px 12px",
+                background: "#FFFFFF", borderRadius: 8,
+                border: `2px solid ${i === 0 ? "#E31837" : "#CCCCCC"}`,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+              }}>
+                <div style={{ fontSize: 30, marginBottom: 6 }}>{medals[i]}</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, color: "#333333", marginBottom: 4, fontWeight: 600 }}>{t.team}</div>
+                <div style={{
+                  fontFamily: "'Courier New', monospace", fontSize: 26, fontWeight: 700,
+                  color: i === 0 ? "#E31837" : i === 1 ? "#003D7A" : "#666666",
+                }}>
+                  {t.totalAvg}
+                </div>
+                <div style={{ fontSize: 12, color: "#666666" }}>/ 100 pts moy.</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Team selector */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        <button
+          onClick={() => setSelected("all")}
+          style={{ ...tabBtn, ...(selected === "all" ? tabBtnActive : {}) }}
+        >Toutes les équipes</button>
+        {teams.map(t => (
+          <button
+            key={t}
+            onClick={() => setSelected(t)}
+            style={{ ...tabBtn, ...(selected === t ? tabBtnActive : {}) }}
+          >{t}</button>
+        ))}
+      </div>
+
+      {/* Detail table */}
+      {(selected === "all" ? teamRankings : teamRankings.filter(t => t.team === selected)).map(({ team, entries, avg, totalAvg }, idx) => (
+        <div key={team} style={{
+          background: "#FFFFFF", border: "1px solid #CCCCCC",
+          borderRadius: 8, marginBottom: 16, overflow: "hidden",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        }}>
+          {/* Team header */}
+          <div style={{
+            padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: "linear-gradient(135deg, #E31837, #C4122E)", flexWrap: "wrap", gap: 10,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 22 }}>{medals[teamRankings.indexOf(teamRankings.find(t => t.team === team))] || "·"}</span>
+              <div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 19, color: "#FFFFFF", fontWeight: 600 }}>{team}</div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.9)" }}>{entries.length} évaluation{entries.length > 1 ? "s" : ""}</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: "'Courier New', monospace", fontSize: 30, fontWeight: 700, color: "#FFFFFF" }}>
+                {totalAvg}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.9)" }}>MOYENNE /100</div>
+            </div>
+          </div>
+
+          {/* Criteria breakdown */}
+          <div style={{ padding: "16px 20px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 16 }}>
+              {CRITERIA.map(c => {
+                const val = parseFloat(avg(c.key));
+                const pct = (val / 20) * 100;
+                const color = val >= 16 ? "#22c55e" : val >= 12 ? "#f59e0b" : "#ef4444";
+                return (
+                  <div key={c.key} style={{
+                    textAlign: "center", padding: "10px 6px",
+                    background: "#F5F5F5", borderRadius: 8,
+                    border: "1px solid #CCCCCC",
+                  }}>
+                    <div style={{ fontSize: 16, marginBottom: 4 }}>{c.icon}</div>
+                    <div style={{ fontSize: 11, color: "#666666", marginBottom: 6, letterSpacing: "0.06em" }}>
+                      {c.label.split(" ")[0].toUpperCase()}
+                    </div>
+                    <div style={{ height: 3, borderRadius: 2, background: "#FFFFFF", marginBottom: 6 }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, transition: "width 0.5s" }} />
+                    </div>
+                    <div style={{ fontFamily: "'Courier New', monospace", fontSize: 17, fontWeight: 700, color }}>
+                      {val}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#666666" }}>/20</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Individual scores */}
+            {entries.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, color: "#666666", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 600 }}>
+                  DÉTAIL PAR JURÉ
+                </div>
+                {entries.map((e, i) => (
+                  <div key={i} style={{
+                    padding: "10px 14px", borderRadius: 8, marginBottom: 6,
+                    background: "#F5F5F5", border: "1px solid #CCCCCC",
+                    display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap",
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 14, color: "#333333", fontWeight: 600, marginBottom: 4 }}>{e.juryName}</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {CRITERIA.map(c => (
+                          <span key={c.key} style={{
+                            fontSize: 12, padding: "1px 7px", borderRadius: 4,
+                            background: "#FFFFFF", color: "#666666",
+                            fontFamily: "'Courier New', monospace",
+                            border: "1px solid #CCCCCC",
+                          }}>
+                            {c.icon} {e.scores[c.key]}
+                          </span>
+                        ))}
+                      </div>
+                      {CRITERIA.some(c => e.comments[c.key]) && (
+                        <div style={{ marginTop: 8, fontSize: 13, color: "#666666" }}>
+                          {CRITERIA.map(c => e.comments[c.key] && (
+                            <div key={c.key} style={{
+                              marginBottom: 4, borderLeft: "2px solid #CCCCCC", paddingLeft: 8,
+                            }}>
+                              <span style={{ color: "#333333", fontWeight: 600 }}>{c.icon} {c.label}:</span>{" "}
+                              <span style={{ fontStyle: "italic" }}>{e.comments[c.key]}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {e.globalComment && (
+                        <div style={{
+                          marginTop: 8, fontSize: 13, color: "#666666",
+                          fontStyle: "italic", borderLeft: "2px solid #E31837", paddingLeft: 8,
+                        }}>
+                          <span style={{ color: "#E31837", fontWeight: 600 }}>Commentaire global:</span>{" "}
+                          "{e.globalComment}"
+                        </div>
+                      )}
+                    </div>
+                    <div style={{
+                      fontFamily: "'Courier New', monospace", fontSize: 22, fontWeight: 700,
+                      color: e.total >= 70 ? "#38B000" : e.total >= 50 ? "#E31837" : "#C4122E",
+                      flexShrink: 0,
+                    }}>
+                      {e.total}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {scores.length === 0 && (
+        <div style={{ textAlign: "center", padding: 48, color: "#666666" }}>
+          Aucune notation enregistrée.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Styles
+const labelStyle = { display: "block", fontSize: 12, color: "#666666", letterSpacing: "0.12em", marginBottom: 6, fontWeight: 600 };
+const inputStyle = {
+  width: "100%", padding: "10px 14px", borderRadius: 8,
+  background: "#FFFFFF", border: "1px solid #CCCCCC",
+  color: "#333333", fontSize: 15, fontFamily: "inherit",
+};
+const tabBtn = {
+  padding: "6px 14px", borderRadius: 8, fontSize: 13, cursor: "pointer",
+  background: "#FFFFFF", color: "#666666",
+  border: "1px solid #CCCCCC", transition: "all 0.15s",
+  fontFamily: "'Courier New', monospace",
+};
+const tabBtnActive = { background: "rgba(227,24,55,0.08)", color: "#E31837", borderColor: "#E31837", fontWeight: 600 };
+const btnStyle = (bg, outline) => ({
+  padding: "9px 20px", borderRadius: 8, fontSize: 14, cursor: "pointer", fontWeight: 600,
+  background: outline ? "#FFFFFF" : bg,
+  color: outline ? bg : "#FFFFFF",
+  border: `2px solid ${bg}`,
+  fontFamily: "inherit", letterSpacing: "0.05em",
+  transition: "all 0.15s",
+});
+
+export default function JuryApp() {
+  const [view, setView] = useState("form"); // "form" | "results"
+  const [allScores, setAllScores] = useState([]);
+
+  // Load from storage
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await window.storage.get("innovia-scores", true);
+        if (res) setAllScores(JSON.parse(res.value));
+      } catch {}
+    })();
+  }, []);
+
+  const handleSubmit = useCallback(async (entry) => {
+    const updated = [...allScores, entry];
+    setAllScores(updated);
+    try { await window.storage.set("innovia-scores", JSON.stringify(updated), true); } catch {}
+  }, [allScores]);
+
+  const handleClear = useCallback(async () => {
+    if (!confirm("Effacer toutes les notations ?")) return;
+    setAllScores([]);
+    try { await window.storage.delete("innovia-scores", true); } catch {}
+  }, []);
+
+  return (
+    <div style={{
+      fontFamily: "'Lora', Georgia, serif",
+      background: "#F5F5F5",
+      minHeight: "100vh",
+      color: "#333333",
+      padding: "32px 16px",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lora:wght@400;500&display=swap');
+        * { box-sizing: border-box; }
+        button { font-family: 'Lora', serif; }
+      `}</style>
+
+      <div style={{ maxWidth: 680, margin: "0 auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 36, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{
+              fontSize: 12, letterSpacing: "0.2em", color: "#E31837",
+              marginBottom: 6, fontFamily: "'Courier New', monospace", fontWeight: 600,
+            }}>
+              CGI · HACKATHON IA · 14 MARS 2026
+            </div>
+            <h1 style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: "clamp(22px, 5vw, 32px)", fontWeight: 700,
+              color: "#333333", margin: 0,
+            }}>
+              Grille de Notation Jury
+            </h1>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setView(view === "form" ? "results" : "form")}
+              style={btnStyle("#E31837")}
+            >
+              {view === "form" ? `◉ Résultats (${allScores.length})` : "✦ Noter"}
+            </button>
+            {allScores.length > 0 && view === "results" && (
+              <button onClick={handleClear} style={btnStyle("#E31837", true)}>Effacer</button>
+            )}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div style={{
+          height: 2, marginBottom: 28,
+          background: "linear-gradient(90deg, transparent, #E31837, transparent)",
+        }} />
+
+        {view === "form" ? (
+          <ScoreForm onSubmit={(e) => { handleSubmit(e); }} />
+        ) : (
+          <ConsolidatedView scores={allScores} onBack={() => setView("form")} />
+        )}
+
+        <div style={{ marginTop: 32, textAlign: "center", fontSize: 12, color: "#999999", letterSpacing: "0.1em" }}>
+          CGI INC. · HÔTEL ROYAL WILLIAM · QUÉBEC
+        </div>
+      </div>
+    </div>
+  );
+}
